@@ -45,6 +45,8 @@ export function createAudio() {
   }
 
   function click() { tone(660, 0, 0.07, 'triangle', 0.08); }
+  function rush() { [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => tone(f, i * 0.07, 0.14, 'square', 0.09)); }
+  function upgrade() { tone(1046.5, 0, 0.1, 'triangle', 0.13); tone(1318.5, 0.09, 0.14, 'triangle', 0.13); tone(1567.98, 0.18, 0.22, 'triangle', 0.13); }
   function milestone() { [880, 1174.66, 1567.98].forEach((f, i) => tone(f, i * 0.09, 0.18, 'triangle', 0.13)); }
   function vip() { tone(1046.5, 0, 0.1, 'triangle', 0.12); tone(1567.98, 0.08, 0.18, 'triangle', 0.11); }
   function serve() { tone(523.25, 0, 0.12, 'triangle', 0.14); tone(783.99, 0.08, 0.16, 'triangle', 0.12); }
@@ -62,11 +64,12 @@ export function createAudio() {
     [392, 349.23, 311.13, 261.63].forEach((f, i) => tone(f, i * 0.16, 0.26, 'triangle', 0.11));
   }
 
-  function tick(dt) {
+  function tick(dt, rush) {
     if (!ambientOn || muted) return;
     ambientTimer -= dt;
     if (ambientTimer > 0) return;
-    ambientTimer = 1.9;
+    // Rush Hour plucks almost twice as fast: the warung feels frantic.
+    ambientTimer = rush ? 1.0 : 1.9;
     ambientStep = (ambientStep + 1) % SCALE.length;
     const note = SCALE[(ambientStep * 3 + 1) % SCALE.length];
     tone(note, 0, 0.5, 'sine', 0.035);
@@ -76,6 +79,8 @@ export function createAudio() {
   return {
     unlock,
     click,
+    rush,
+    upgrade,
     milestone,
     vip,
     serve,

@@ -4,7 +4,7 @@
 // step() advances one fixed step and returns what happened as bit flags, so
 // the caller can react (and play sounds) without the world knowing about
 // screens or sound. Nothing here allocates after createWorld returns.
-import { CUSTOMER_NAMES, DAYS, HAIRS, HIJAB_COLORS, MAX_WALKOUTS, MENU, MENU_ORDER, SEATS, SHIRTS, SKINS, VIP_CHANCE, VIP_NAME, VIP_PATIENCE, VIP_PAY } from './config.js';
+import { CUSTOMER_NAMES, DAYS, FIELD, HAIRS, HIJAB_COLORS, MAX_WALKOUTS, MENU, MENU_ORDER, RUSH, SEATS, SHIRTS, SKINS, UPGRADES, VIP_CHANCE, VIP_NAME, VIP_PATIENCE, VIP_PAY } from './config.js';
 
 export const EVENT_SERVE = 1;
 export const EVENT_COIN = 2;
@@ -17,6 +17,8 @@ export const EVENT_LOSE = 128;
 export const EVENT_DAYSTART = 256;
 export const EVENT_MILESTONE = 512;
 export const EVENT_VIP = 1024;
+export const EVENT_RUSH = 2048;
+export const EVENT_UPGRADE = 4096;
 
 function pick(random, list) {
   return list[Math.floor(random() * list.length)];
@@ -40,15 +42,18 @@ export function createWorld(random) {
   const floaters = [];
   for (let i = 0; i < 24; i += 1) floaters.push({ active: false, x: 0, y: 0, text: '', color: '#fff', life: 0, size: 24 });
   const particles = [];
-  for (let i = 0; i < 80; i += 1) particles.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '#fff', size: 3 });
+  for (let i = 0; i < 120; i += 1) particles.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '#fff', size: 3 });
 
   const state = {
     customers, floaters, particles,
-    status: 'idle', // idle | playing | dayclear | won | lost
+    status: 'idle', // idle | playing | shop | won | lost
     loseReason: '',
     day: 0, coins: 0, totalCoins: 0, target: DAYS[0].target, timeLeft: DAYS[0].duration,
     walkouts: 0, combo: 0, bestCombo: 0, served: 0, servedWrong: 0,
-    selected: -1, spawnTimer: 1.2, elapsed: 0, dayClearTimer: 0,
+    selected: -1, spawnTimer: 1.2, elapsed: 0, dayElapsed: 0,
+    upgrades: { stove: false, seat: false, fan: false },
+    rushActive: false, rushTimer: 0, rushDone: false, rushAt: 0,
+    servedVip: 0, rushServed: 0,
   };
 
   function addFloater(x, y, text, color, size) {
@@ -84,7 +89,8 @@ export function createWorld(random) {
   }
 
   function spawnCustomer() {
-    const free = customers.filter((c) => !c.active);
+    // Seat 5 (the sixth stool) stays locked until the player buys it.
+    const free = customers.filter((c) => !c.active && (c.seat < 5 || state.upgrades.seat));
     if (free.length === 0) return false;
     const c = free[Math.floor(random() * free.length)];
     const dayCfg = DAYS[state.day];
@@ -137,7 +143,14 @@ export function createWorld(random) {
     state.selected = -1;
     state.spawnTimer = 1.0;
     state.elapsed = 0;
-    state.dayClearTimer = 0;
+    state.dayElapsed = 0;
+    state.upgrades = { stove: false, seat: false, fan: false };
+    state.rushActive = false;
+    state.rushTimer = 0;
+    state.rushDone = false;
+    state.rushAt = 0;
+    state.servedVip = 0;
+    state.rushServed = 0;
   }
 
   function startDay(day) {
@@ -148,10 +161,32 @@ export function createWorld(random) {
     state.spawnTimer = 0.8;
     state.combo = 0;
     state.status = 'playing';
+    state.dayElapsed = 0;
+    state.rushActive = false;
+    state.rushTimer = 0;
+    state.rushDone = false;
+    state.rushAt = DAYS[day].duration * RUSH.startFrac;
     for (const c of customers) { c.active = false; c.leaving = false; c.order = []; }
     state.selected = -1;
     spawnCustomer();
     spawnCustomer();
+  }
+
+  /** Buy one shop upgrade with total coins. Returns EVENT_UPGRADE, else 0. */
+  function buyUpgrade(id) {
+    if (state.status !== 'shop') return 0;
+    const up = UPGRADES.find((u) => u.id === id);
+    if (!up || state.upgrades[id] || state.totalCoins < up.price) return 0;
+    state.totalCoins -= up.price;
+    state.upgrades[id] = true;
+    return EVENT_UPGRADE;
+  }
+
+  /** Leave the shop and start the next shift. Upgrades stay owned. */
+  function nextDay() {
+    if (state.status !== 'shop' || state.day >= DAYS.length - 1) return 0;
+    startDay(state.day + 1);
+    return EVENT_DAYSTART;
   }
 
   function startGame() {
@@ -190,12 +225,15 @@ export function createWorld(random) {
     state.combo += 1;
     if (state.combo > state.bestCombo) state.bestCombo = state.combo;
     const mult = comboMultiplier(state.combo);
-    const earned = MENU[itemId].price * mult * (c.vip ? VIP_PAY : 1);
+    // Rush Hour pays 1.5x on top of combo and VIP multipliers.
+    const earned = Math.round(MENU[itemId].price * mult * (c.vip ? VIP_PAY : 1) * (state.rushActive ? RUSH.coinMult : 1));
     state.coins += earned;
     state.totalCoins += earned;
     state.served += 1;
-    addFloater(seat.x, seat.y - 130, '+' + earned + (mult > 1 ? ' x' + mult : '') + (c.vip ? ' VIP!' : ''), '#f2c94c');
-    burst(seat.x, seat.y - 60, c.vip ? '#ffd76e' : '#f2c94c', c.vip ? 18 : 12);
+    if (c.vip) state.servedVip += 1;
+    if (state.rushActive) state.rushServed += 1;
+    addFloater(seat.x, seat.y - 130, '+' + earned + (mult > 1 ? ' x' + mult : '') + (c.vip ? ' VIP!' : '') + (state.rushActive ? ' RUSH!' : ''), '#f2c94c');
+    burst(seat.x, seat.y - 60, c.vip ? '#ffd76e' : '#f2c94c', (c.vip ? 18 : 12) + (state.rushActive ? 8 : 0));
     let extra = 0;
     if (c.vip) extra |= EVENT_VIP;
     // Combo milestones get a big shout: x2 starts at 4 serves, x3 at 9.
@@ -208,7 +246,8 @@ export function createWorld(random) {
     }
     if (c.order.length === 0) {
       c.leaving = true;
-      c.leaveTimer = 0.45;
+      // Kompor Baru: a served customer clears the seat ~25% faster.
+      c.leaveTimer = state.upgrades.stove ? 0.28 : 0.45;
       addFloater(seat.x, seat.y - 165, 'Terima kasih!', '#7ddc6a');
       if (state.selected === c.seat) {
         const rest = customers.filter((o) => o.active && !o.leaving && o.seat !== c.seat);
@@ -237,14 +276,8 @@ export function createWorld(random) {
     }
     for (const c of customers) c.bob += dt * 2.2;
 
-    if (state.status === 'dayclear') {
-      state.dayClearTimer -= dt;
-      if (state.dayClearTimer <= 0) {
-        startDay(state.day + 1);
-        events |= EVENT_DAYSTART;
-      }
-      return events;
-    }
+    // In the shop the clock stops: the player browses upgrades in peace.
+    if (state.status === 'shop') return events;
     if (state.status !== 'playing' && !harmless) return events;
 
     // Title backdrop: customers drift in, patience frozen, no timer, no walkouts.
@@ -258,10 +291,25 @@ export function createWorld(random) {
     }
 
     state.timeLeft -= dt;
+    state.dayElapsed += dt;
+    // Rush Hour: once per shift, customers arrive twice as fast for 15 s.
+    if (!state.rushDone && state.dayElapsed >= state.rushAt) {
+      state.rushDone = true;
+      state.rushActive = true;
+      state.rushTimer = RUSH.duration;
+      events |= EVENT_RUSH;
+      addFloater(FIELD.width / 2, 150, '🔥 RUSH HOUR! 🔥', '#ff7a3c', 40);
+      addFloater(FIELD.width / 2, 188, 'Koin 1,5x — layani sebanyak-banyaknya!', '#ffd76e', 22);
+    }
+    if (state.rushActive) {
+      state.rushTimer -= dt;
+      if (state.rushTimer <= 0) state.rushActive = false;
+    }
     state.spawnTimer -= dt;
     if (state.spawnTimer <= 0) {
       if (spawnCustomer()) events |= EVENT_ARRIVE;
-      state.spawnTimer = DAYS[state.day].spawn * (0.85 + random() * 0.3);
+      const gap = DAYS[state.day].spawn * (state.rushActive ? RUSH.spawnMult : 1);
+      state.spawnTimer = gap * (0.85 + random() * 0.3);
     }
 
     for (const c of customers) {
@@ -271,7 +319,8 @@ export function createWorld(random) {
         if (c.leaveTimer <= 0) c.active = false;
         continue;
       }
-      c.patience -= dt / c.patienceMax;
+      // Kipas Angin: patience drains 20% slower.
+      c.patience -= (dt / c.patienceMax) * (state.upgrades.fan ? 0.8 : 1);
       c.mood = c.patience > 0.55 ? 'happy' : c.patience > 0.28 ? 'worried' : 'angry';
       if (c.patience <= 0) {
         c.active = false;
@@ -299,8 +348,9 @@ export function createWorld(random) {
           state.status = 'won';
           events |= EVENT_WIN;
         } else {
-          state.status = 'dayclear';
-          state.dayClearTimer = 2.6;
+          // Target met: open the shop instead of auto-advancing.
+          state.status = 'shop';
+          state.rushActive = false;
           events |= EVENT_DAYCLEAR;
         }
       } else {
@@ -313,5 +363,5 @@ export function createWorld(random) {
   }
 
   reset();
-  return { state, reset, startGame, startDay, step, serve, selectSeat, cycleSelection, spawnCustomer };
+  return { state, reset, startGame, startDay, step, serve, selectSeat, cycleSelection, spawnCustomer, buyUpgrade, nextDay };
 }

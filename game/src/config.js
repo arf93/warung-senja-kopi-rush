@@ -6,13 +6,16 @@ export const FIELD = { width: 1280, height: 720 };
 /** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
 export const STEP = 1 / 60;
 
-/** Five stools along the warung counter, left to right. */
+/** Six stools along the warung counter, left to right. Seat 5 (the sixth)
+ *  starts locked behind a cloth: it opens only once the player buys the
+ *  "Kursi Tambahan" upgrade in the shop between shifts. */
 export const SEATS = [
-  { x: 170, y: 400 },
-  { x: 395, y: 400 },
-  { x: 620, y: 400 },
-  { x: 845, y: 400 },
-  { x: 1070, y: 400 },
+  { x: 120, y: 400 },
+  { x: 330, y: 400 },
+  { x: 540, y: 400 },
+  { x: 750, y: 400 },
+  { x: 960, y: 400 },
+  { x: 1170, y: 400 },
 ];
 
 export const MENU = {
@@ -25,13 +28,26 @@ export const MENU = {
 export const MENU_ORDER = ['kopi', 'teh', 'goreng', 'nasi', 'esteh'];
 
 /** One shift per day: target coins, shift length, spawn gap, patience seconds.
- *  v2 targets are 10% above v1 (500/750/1000): the VIP's double pay lifts
- *  expected income by about that much, so the challenge stays the same. */
+ *  v3 targets are ~18% above v2 (550/800/1100): Rush Hour pays 1.5x for
+ *  15 s of every shift, the sixth seat and the fan lift throughput, so the
+ *  challenge stays the same. Shop prices are paid from total coins. */
 export const DAYS = [
-  { target: 550, duration: 75, spawn: 3.2, patience: 26, itemsMax: 1 },
-  { target: 800, duration: 70, spawn: 2.7, patience: 22, itemsMax: 2 },
-  { target: 1100, duration: 65, spawn: 2.3, patience: 19, itemsMax: 2 },
+  { target: 650, duration: 75, spawn: 3.2, patience: 26, itemsMax: 1 },
+  { target: 950, duration: 70, spawn: 2.7, patience: 22, itemsMax: 2 },
+  { target: 1300, duration: 65, spawn: 2.3, patience: 19, itemsMax: 2 },
 ];
+
+/** The shop between shifts: one-time upgrades, bought with total coins.
+ *  Each one changes the game visibly (stove flame, sixth stool, ceiling
+ *  fan) and mechanically, so the choice is real, not decoration. */
+export const UPGRADES = [
+  { id: 'stove', name: 'Kompor Baru', icon: '🔥', price: 150, desc: 'Sajian 25% lebih cepat:', desc2: 'pelanggan pulang lebih cepat,' },
+  { id: 'seat', name: 'Kursi Tambahan', icon: '🪑', price: 200, desc: 'Kursi ke-6 terbuka:', desc2: 'satu pelanggan lagi duduk.' },
+  { id: 'fan', name: 'Kipas Angin', icon: '🌀', price: 150, desc: 'Kesabaran pelanggan', desc2: 'berkurang 20% lebih lambat.' },
+];
+/** Rush Hour: once per shift, at 40% through it, customers arrive twice
+ *  as fast for 15 seconds and every coin pays 1.5x. */
+export const RUSH = { startFrac: 0.4, duration: 15, coinMult: 1.5, spawnMult: 0.5 };
 
 export const MAX_WALKOUTS = 5;
 

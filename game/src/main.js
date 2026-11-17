@@ -6,12 +6,12 @@
 // ?seed=N fixes the customer pattern. ?shot=start|play|combo|end (with
 // &seed=N) stages that scene instead of running the loop, paints it twice
 // and sets window.__shotReady for a screenshot.
-import { BEST_KEY, STEP } from './config.js';
+import { BEST_KEY, STEP, UPGRADES } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, EVENT_ARRIVE, EVENT_COIN, EVENT_DAYCLEAR, EVENT_DAYSTART, EVENT_LOSE, EVENT_MILESTONE, EVENT_SERVE, EVENT_VIP, EVENT_WALKOUT, EVENT_WIN, EVENT_WRONG } from './world.js';
+import { createWorld, EVENT_ARRIVE, EVENT_COIN, EVENT_DAYCLEAR, EVENT_DAYSTART, EVENT_LOSE, EVENT_MILESTONE, EVENT_RUSH, EVENT_SERVE, EVENT_UPGRADE, EVENT_VIP, EVENT_WALKOUT, EVENT_WIN, EVENT_WRONG } from './world.js';
 import { ACTION_CONFIRM, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput } from './input.js';
 import { createAudio } from './audio.js';
-import { MUTE_RECT, PAUSE_RECT, SCREEN_DAYCLEAR, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, createRenderer, seatAt, trayRects } from './render.js';
+import { MUTE_RECT, PAUSE_RECT, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_SHOP, SCREEN_TITLE, createRenderer, seatAt, shopCardRects, shopNextRect, trayRects } from './render.js';
 import { stageShot } from './shots.js';
 
 /** The longest frame the loop catches up on; a longer stall (a hidden tab) is dropped, not replayed. */
@@ -98,6 +98,8 @@ function runGame() {
     if (events & EVENT_COIN) audio.coin();
     if (events & EVENT_MILESTONE) audio.milestone();
     if (events & EVENT_VIP) audio.vip();
+    if (events & EVENT_RUSH) audio.rush();
+    if (events & EVENT_UPGRADE) audio.upgrade();
     if (events & EVENT_WRONG) audio.wrong();
     if (events & EVENT_WALKOUT) audio.walkout();
     if (events & EVENT_ARRIVE) audio.arrive();
@@ -114,12 +116,37 @@ function runGame() {
     if (events & EVENT_WIN || events & EVENT_LOSE) endGame();
   }
 
+  /** Leave the shop and start the next shift. */
+  function continueToNextDay() {
+    const events = world.nextDay();
+    if (events & EVENT_DAYSTART) {
+      screen = SCREEN_PLAY;
+      audio.click();
+      announce('Shift ' + (world.state.day + 1) + '. Target ' + world.state.target + ' koin.');
+    }
+  }
+
   /** Handle one click; returns true when the click did something specific. */
   function handleClick(p) {
     if (inRect(p, MUTE_RECT)) {
       const muted = audio.toggleMute();
       announce(muted ? 'Suara mati.' : 'Suara hidup.');
       return true;
+    }
+    if (screen === SCREEN_SHOP) {
+      for (const r of shopCardRects()) {
+        if (inRect(p, r)) {
+          const events = world.buyUpgrade(r.id);
+          playEvents(events);
+          announce(events & EVENT_UPGRADE ? 'Upgrade dibeli!' : 'Tidak cukup koin atau sudah dibeli.');
+          return true;
+        }
+      }
+      if (inRect(p, shopNextRect())) {
+        continueToNextDay();
+        return true;
+      }
+      return true; // Empty space in the shop does nothing.
     }
     if (screen === SCREEN_PLAY) {
       if (inRect(p, PAUSE_RECT)) {
@@ -175,6 +202,7 @@ function runGame() {
     }
     if (actions & ACTION_RESTART && screen !== SCREEN_TITLE) startGame();
     else if (actions & ACTION_CONFIRM && !clickHandled && (screen === SCREEN_TITLE || screen === SCREEN_OVER)) startGame();
+    else if (actions & ACTION_CONFIRM && !clickHandled && screen === SCREEN_SHOP) continueToNextDay();
     else if (actions & ACTION_PAUSE && screen === SCREEN_PLAY) {
       screen = SCREEN_PAUSED;
       announce('Jeda.');
@@ -184,6 +212,15 @@ function runGame() {
     }
     if (cycle !== 0 && screen === SCREEN_PLAY) world.cycleSelection(cycle);
     if (serve) serveItem(serve);
+    // In the shop, keys 1-3 buy the three upgrades.
+    if (screen === SCREEN_SHOP && serve) {
+      const idx = ['kopi', 'teh', 'goreng'].indexOf(serve);
+      if (idx >= 0) {
+        const events = world.buyUpgrade(UPGRADES[idx].id);
+        playEvents(events);
+        announce(events & EVENT_UPGRADE ? 'Upgrade dibeli!' : 'Tidak cukup koin atau sudah dibeli.');
+      }
+    }
 
     if (screen === SCREEN_TITLE) {
       world.step(STEP, true);
@@ -195,9 +232,9 @@ function runGame() {
         accumulator -= STEP;
         guard += 1;
         playEvents(events);
-        if (world.state.status === 'dayclear') {
-          screen = SCREEN_DAYCLEAR;
-          announce('Shift selesai! Target tercapai.');
+        if (world.state.status === 'shop') {
+          screen = SCREEN_SHOP;
+          announce('Shift selesai! Toko upgrade dibuka.');
           break;
         }
         if (world.state.status === 'won' || world.state.status === 'lost') {
@@ -205,25 +242,9 @@ function runGame() {
           break;
         }
       }
-      if (world.state.status === 'playing' && screen === SCREEN_DAYCLEAR) screen = SCREEN_PLAY;
-      audio.tick(dt);
-    } else if (screen === SCREEN_DAYCLEAR) {
-      accumulator += dt;
-      let guard = 0;
-      while (accumulator >= STEP && guard < 12) {
-        const events = world.step(STEP, false);
-        accumulator -= STEP;
-        guard += 1;
-        playEvents(events);
-        if (world.state.status === 'playing') {
-          screen = SCREEN_PLAY;
-          break;
-        }
-        if (world.state.status === 'won' || world.state.status === 'lost') {
-          endGame();
-          break;
-        }
-      }
+      audio.tick(dt, world.state.rushActive);
+    } else if (screen === SCREEN_SHOP) {
+      // The world is frozen while the player shops; clicks and keys drive it.
     }
 
     renderer.draw(world.state, screen, best, { t: clock, muted: audio.isMuted() });

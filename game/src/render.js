@@ -2,18 +2,29 @@
 // The 1280x720 playfield is scaled to fit the window and centred, the margin
 // filled with the backdrop colour. All art is drawn with Canvas 2D shapes:
 // a Yogyakarta sunset, the warung counter, and the customers themselves.
-import { FIELD, FONT, MENU, MENU_ORDER, PALETTE, SEATS, SHIFT_SKIES } from './config.js';
+import { FIELD, FONT, MENU, MENU_ORDER, PALETTE, SEATS, SHIFT_SKIES, UPGRADES } from './config.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
 export const SCREEN_PAUSED = 'paused';
-export const SCREEN_DAYCLEAR = 'dayclear';
+export const SCREEN_SHOP = 'shop';
 export const SCREEN_OVER = 'over';
 
 export const TRAY_Y = 596;
 export const TRAY_H = 88;
 export const PAUSE_RECT = { x: 1180, y: 10, w: 44, h: 44 };
 export const MUTE_RECT = { x: 1128, y: 10, w: 44, h: 44 };
+
+/** The shop's three upgrade cards and the continue button, in field coords. */
+export function shopCardRects() {
+  const w = 300;
+  const h = 210;
+  const y = 190;
+  return UPGRADES.map((u, i) => ({ id: u.id, x: 140 + i * 330, y, w, h }));
+}
+export function shopNextRect() {
+  return { x: 440, y: 440, w: 400, h: 64 };
+}
 
 export function trayRects() {
   const w = 208;
@@ -436,11 +447,11 @@ export function createRenderer(canvas) {
     context.fill();
   }
 
-  function drawCounter(day) {
+  function drawCounter(day, upgrades, t) {
     const sky = SHIFT_SKIES[day] || SHIFT_SKIES[0];
     // Hanging lamps from the roofline, between the seats: dim at dusk,
     // glowing warm at night.
-    for (const lx of [300, 980]) {
+    for (const lx of [225, 645, 1065]) {
       const flicker = 0.85 + 0.15 * Math.sin(performance.now() / 300 + lx);
       const glowA = sky.lampGlow * flicker;
       if (glowA > 0.05) {
@@ -475,25 +486,124 @@ export function createRenderer(canvas) {
     context.fillRect(0, 500, FIELD.width, 16);
     context.fillStyle = PALETTE.counterTrim;
     context.fillRect(0, 516, FIELD.width, 4);
-    // Jars and a kettle on the counter.
-    for (let i = 0; i < 5; i += 1) {
-      const x = 60 + i * 44;
+    // Jars along the counter, a kettle steaming at the far right.
+    for (let i = 0; i < 7; i += 1) {
+      const x = 20 + i * 40;
       context.fillStyle = i % 2 ? '#c9a24f' : '#8a5a2b';
       roundRect(x, 462, 30, 38, 6);
       context.fill();
       context.fillStyle = 'rgba(255,255,255,0.25)';
       context.fillRect(x + 4, 466, 6, 30);
     }
+    // Kettle with a wisp of steam.
     context.fillStyle = '#3a3a3a';
     context.beginPath();
-    context.arc(1160, 482, 18, 0, Math.PI * 2);
+    context.arc(1240, 482, 18, 0, Math.PI * 2);
     context.fill();
-    context.fillRect(1176, 472, 26, 8);
-    // Hanging sign.
+    context.fillRect(1256, 472, 20, 8);
+    context.strokeStyle = 'rgba(255, 243, 224, 0.6)';
+    context.lineWidth = 2.5;
+    const ksway = Math.sin(t * 2 + 1) * 4;
+    context.beginPath();
+    context.moveTo(1240, 462);
+    context.quadraticCurveTo(1240 + ksway, 448, 1240 - ksway * 0.5, 436);
+    context.stroke();
+    // Kompor Baru: a little stove with a flame, once the player buys it.
+    if (upgrades && upgrades.stove) {
+      context.fillStyle = '#2e2e2e';
+      context.fillRect(1000, 478, 56, 22);
+      context.fillStyle = '#8a5a2b';
+      context.beginPath();
+      context.arc(1028, 476, 18, 0, Math.PI * 2);
+      context.fill();
+      const fl = 0.7 + 0.3 * Math.sin(t * 9);
+      context.fillStyle = 'rgba(255, 150, 50, ' + fl.toFixed(2) + ')';
+      context.beginPath();
+      context.moveTo(1028, 458);
+      context.quadraticCurveTo(1040, 470, 1028, 478);
+      context.quadraticCurveTo(1016, 470, 1028, 458);
+      context.fill();
+    }
+    // Kipas Angin: a ceiling fan hanging over the middle of the counter.
+    if (upgrades && upgrades.fan) {
+      const fx = 640;
+      const fa = t * 5;
+      context.strokeStyle = '#2e1a33';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(fx, 420);
+      context.lineTo(fx, 440);
+      context.stroke();
+      context.fillStyle = '#4a3a2a';
+      for (let i = 0; i < 3; i += 1) {
+        const a = fa + (i * Math.PI * 2) / 3;
+        context.beginPath();
+        context.ellipse(fx + Math.cos(a) * 22, 446 + Math.sin(a) * 5, 20, 5, a, 0, Math.PI * 2);
+        context.fill();
+      }
+      context.fillStyle = '#6b4a2a';
+      context.beginPath();
+      context.arc(fx, 446, 7, 0, Math.PI * 2);
+      context.fill();
+    }
+    // The warung cat, asleep on the counter between the first two stools.
+    context.fillStyle = '#d98a4a';
+    context.beginPath();
+    context.ellipse(215, 492, 26, 12, 0, 0, Math.PI * 2);
+    context.fill();
+    context.beginPath();
+    context.arc(192, 486, 10, 0, Math.PI * 2);
+    context.fill();
+    context.beginPath();
+    context.moveTo(186, 478);
+    context.lineTo(188, 470);
+    context.lineTo(192, 478);
+    context.closePath();
+    context.moveTo(196, 478);
+    context.lineTo(198, 470);
+    context.lineTo(200, 478);
+    context.closePath();
+    context.fill();
+    context.strokeStyle = '#d98a4a';
+    context.lineWidth = 4;
+    context.beginPath();
+    context.moveTo(238, 492);
+    context.quadraticCurveTo(252, 482, 246, 472);
+    context.stroke();
+    // String lights along the counter front.
+    for (let i = 0; i < 24; i += 1) {
+      const x = 26 + i * 53;
+      const tw = 0.6 + 0.4 * Math.sin(t * 2 + i * 1.7);
+      context.fillStyle = 'rgba(255, 215, 110, ' + tw.toFixed(2) + ')';
+      context.beginPath();
+      context.arc(x, 530 + (i % 2) * 5, 3.5, 0, Math.PI * 2);
+      context.fill();
+    }
+    // Hanging sign, low on the counter front so seated customers never
+    // hide it.
     context.fillStyle = '#3a1f16';
-    roundRect(480, 470, 320, 30, 8);
+    roundRect(480, 548, 320, 30, 8);
     context.fill();
-    text('WARUNG SENJA  •  SEJAK 1998', 640, 491, 16, PALETTE.coin, 'center', '700');
+    text('WARUNG SENJA  •  SEJAK 1998', 640, 569, 16, PALETTE.coin, 'center', '700');
+  }
+
+  /** The sixth stool, covered with a cloth until the player buys it. */
+  function drawLockedSeat() {
+    const s = SEATS[5];
+    const x = s.x;
+    const y = s.y;
+    context.fillStyle = '#4a2b1a';
+    context.fillRect(x - 34, y + 62, 68, 10);
+    context.fillRect(x - 26, y + 72, 8, 34);
+    context.fillRect(x + 18, y + 72, 8, 34);
+    context.fillStyle = '#7a6a9a';
+    roundRect(x - 42, y - 18, 84, 78, 18);
+    context.fill();
+    context.fillStyle = 'rgba(255,255,255,0.15)';
+    context.fillRect(x - 42, y - 18, 84, 12);
+    text('🔒', x, y + 20, 26, '#fff3e0', 'center');
+    text('Kursi Baru', x, y + 128, 15, PALETTE.muted, 'center', '600');
+    text('beli di toko', x, y + 148, 13, PALETTE.muted, 'center');
   }
 
   function drawHud(state, muted) {
@@ -555,7 +665,66 @@ export function createRenderer(canvas) {
     });
     // Hint line sits in the clear strip below the tray panel (panel ends at
     // TRAY_Y + TRAY_H + 8 = 692; glyphs span ~699-714, inside the 720 field).
-    text('Klik pelanggan, lalu klik menu — atau pilih dengan ← → dan sajikan dengan 1-5', FIELD.width / 2, TRAY_Y + TRAY_H + 26, 15, PALETTE.muted, 'center');
+    text('Klik pelanggan, lalu klik menu — atau pilih dengan ← → dan sajikan dengan 1-5  •  Antar shift: beli upgrade di toko', FIELD.width / 2, TRAY_Y + TRAY_H + 26, 15, PALETTE.muted, 'center');
+  }
+
+  /** Rush Hour banner: a flashing strip under the HUD while it runs. */
+  function drawRushBanner(state, t) {
+    if (!state.rushActive) return;
+    const pulse = 0.75 + 0.25 * Math.sin(t * 8);
+    context.fillStyle = 'rgba(200, 40, 20, ' + (0.85 * pulse).toFixed(2) + ')';
+    roundRect(340, 68, 600, 40, 12);
+    context.fill();
+    context.strokeStyle = '#ffd76e';
+    context.lineWidth = 2;
+    roundRect(340, 68, 600, 40, 12);
+    context.stroke();
+    text('🔥 RUSH HOUR! Koin 1,5x — layani sebanyak-banyaknya! 🔥', FIELD.width / 2, 95, 20, '#fff3e0', 'center', '800');
+  }
+
+  /** The shop between shifts: three upgrade cards and a continue button. */
+  function drawShop(state) {
+    context.fillStyle = 'rgba(10, 6, 14, 0.72)';
+    context.fillRect(0, 0, FIELD.width, FIELD.height);
+    text('🛒  TOKO WARUNG  —  Shift ' + (state.day + 1) + ' selesai!', FIELD.width / 2, 96, 38, PALETTE.text, 'center', '800');
+    text('Target ' + state.target + ' koin tercapai: ' + state.coins + ' koin.  •  🪙 ' + state.totalCoins + ' koin di tangan', FIELD.width / 2, 134, 20, PALETTE.coin, 'center', '700');
+    text('Beli upgrade sebanyak yang kamu mampu — efeknya permanen sampai permainan selesai.', FIELD.width / 2, 162, 17, PALETTE.muted, 'center');
+    const rects = shopCardRects();
+    rects.forEach((r, i) => {
+      const u = UPGRADES[i];
+      const owned = state.upgrades[u.id];
+      const afford = state.totalCoins >= u.price;
+      context.fillStyle = owned ? '#2e3a2e' : '#241722';
+      roundRect(r.x, r.y, r.w, r.h, 16);
+      context.fill();
+      context.strokeStyle = owned ? '#7ddc6a' : afford ? '#ff9a4d' : '#5a3340';
+      context.lineWidth = 3;
+      roundRect(r.x, r.y, r.w, r.h, 16);
+      context.stroke();
+      text(u.icon, r.x + r.w / 2, r.y + 56, 40, PALETTE.text, 'center');
+      text(u.name, r.x + r.w / 2, r.y + 96, 22, PALETTE.text, 'center', '800');
+      text(u.desc, r.x + r.w / 2, r.y + 128, 16, PALETTE.muted, 'center');
+      text(u.desc2, r.x + r.w / 2, r.y + 150, 16, PALETTE.muted, 'center');
+      if (owned) {
+        text('✓ DIBELI', r.x + r.w / 2, r.y + 188, 20, '#7ddc6a', 'center', '800');
+      } else {
+        text('🪙 ' + u.price + '  •  tombol ' + (i + 1), r.x + r.w / 2, r.y + 188, 19, afford ? PALETTE.coin : '#8a5a6a', 'center', '700');
+      }
+    });
+    const next = shopNextRect();
+    context.fillStyle = PALETTE.button;
+    roundRect(next.x, next.y, next.w, next.h, 14);
+    context.fill();
+    context.strokeStyle = '#ffd76e';
+    context.lineWidth = 2;
+    roundRect(next.x, next.y, next.w, next.h, 14);
+    context.stroke();
+    text('▶  MULAI SHIFT ' + (state.day + 2), next.x + next.w / 2, next.y + 42, 24, '#fff3e0', 'center', '800');
+    // A dark pill behind the hint so it stays readable over the scene.
+    context.fillStyle = 'rgba(10, 6, 14, 0.85)';
+    roundRect(FIELD.width / 2 - 350, 528, 700, 32, 16);
+    context.fill();
+    text('Klik kartu untuk membeli  •  1/2/3 beli upgrade  •  Spasi untuk lanjut', FIELD.width / 2, 550, 17, PALETTE.muted, 'center');
   }
 
   function drawFloaters(state) {
@@ -604,33 +773,37 @@ export function createRenderer(canvas) {
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.setTransform(view.scale, 0, 0, view.scale, view.x, view.y);
     drawSunset(t, state.day);
-    drawCounter(state.day);
+    drawCounter(state.day, state.upgrades, t);
+    if (!state.upgrades.seat) drawLockedSeat();
     for (const c of state.customers) {
       if (c.active) drawCustomer(c, c.seat === state.selected && screen === SCREEN_PLAY, t);
     }
     drawFloaters(state);
     if (screen === SCREEN_TITLE) {
       drawHud({ coins: 0, target: DAYS0Target(), day: 0, timeLeft: 75, walkouts: 0, combo: 0 }, muted);
-      drawPanel('WARUNG SENJA', ['Kopi Rush — layani pelanggan sebelum senja habis.', 'Klik pelanggan, sajikan pesanan yang benar, jaga kombo.', 'Kopi 30  •  Teh 20  •  Gorengan 25  •  Nasi Kucing 35  •  Es Teh 25', 'Pelanggan VIP Pak Lurah bayar 2x — layani dia cepat!', '3 shift: senja, jingga pekat, lalu malam. 5 pelanggan pergi = tutup.'], 'Tekan Spasi atau klik untuk mulai', PALETTE.panelEdge);
+      drawPanel('WARUNG SENJA', ['Kopi Rush — layani pelanggan sebelum senja habis.', 'Klik pelanggan, sajikan pesanan yang benar, jaga kombo.', 'Kopi 30  •  Teh 20  •  Gorengan 25  •  Nasi Kucing 35  •  Es Teh 25', 'VIP Pak Lurah bayar 2x  •  RUSH HOUR tiap shift: koin 1,5x!', 'Antar shift: beli upgrade di toko — kompor, kursi, kipas.', '3 shift: senja, jingga pekat, lalu malam. 5 pelanggan pergi = tutup.'], 'Tekan Spasi atau klik untuk mulai', PALETTE.panelEdge);
       text('Skor terbaik: ' + best + ' koin', FIELD.width / 2, 640, 20, PALETTE.muted, 'center');
       return;
     }
     drawHud(state, muted);
     drawTray(state, t);
+    drawRushBanner(state, t);
     if (screen === SCREEN_PAUSED) {
       drawPanel('Jeda', ['Warungnya menunggu. Pelanggan sabar dulu.'], 'Tekan P untuk lanjut  •  R untuk mulai ulang');
-    } else if (screen === SCREEN_DAYCLEAR) {
-      drawPanel('Shift ' + (state.day + 1) + ' selesai!', ['Target ' + state.target + ' koin tercapai: ' + state.coins + ' koin.', 'Total koin: ' + state.totalCoins + '  •  Kombo terbaik: x' + state.bestCombo, 'Shift berikutnya lebih ramai dan pelanggan lebih tidak sabar.'], 'Shift berikutnya segera dimulai...');
+    } else if (screen === SCREEN_SHOP) {
+      drawShop(state);
     } else if (screen === SCREEN_OVER) {
       const won = state.status === 'won';
+      const bought = UPGRADES.filter((u) => state.upgrades[u.id]).map((u) => u.name);
+      const upLine = 'Upgrade dibeli: ' + (bought.length > 0 ? bought.join(', ') : 'tidak ada');
       const lines = won
-        ? ['Warung Senja jadi langganan se-Yogyakarta!', 'Total koin: ' + state.totalCoins + '  •  Pelanggan dilayani: ' + state.served + '  •  Kombo terbaik: ' + state.bestCombo, 'Skor terbaik: ' + Math.max(best, state.totalCoins) + ' koin']
-        : [state.loseReason || 'Warung tutup.', 'Total koin: ' + state.totalCoins + '  •  Pelanggan dilayani: ' + state.served, 'Skor terbaik: ' + Math.max(best, state.totalCoins) + ' koin'];
+        ? ['Warung Senja jadi langganan se-Yogyakarta!', 'Total koin: ' + state.totalCoins + '  •  Pelanggan dilayani: ' + state.served + '  •  Kombo terbaik: ' + state.bestCombo, 'VIP dilayani: ' + state.servedVip + '  •  Sajian saat Rush Hour: ' + state.rushServed, upLine, 'Skor terbaik: ' + Math.max(best, state.totalCoins) + ' koin']
+        : [state.loseReason || 'Warung tutup.', 'Total koin: ' + state.totalCoins + '  •  Pelanggan dilayani: ' + state.served, upLine, 'Skor terbaik: ' + Math.max(best, state.totalCoins) + ' koin'];
       drawPanel(won ? 'MENANG! 🎉' : 'Warung Tutup', lines, 'Tekan Spasi atau klik untuk main lagi  •  R untuk restart');
     }
   }
 
-  function DAYS0Target() { return 550; }
+  function DAYS0Target() { return 650; }
 
   resize();
   window.addEventListener('resize', resize);

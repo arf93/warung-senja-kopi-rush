@@ -1,16 +1,17 @@
-// The screenshot scenes behind ?shot=start|play|combo|end. Each one plays
-// the real rules forward from a fresh world for a fixed number of steps,
-// steered by a simple autopilot (serve the most impatient customer's order),
-// so the frame is what a short game really looks like and the same seed
-// always gives the same frame.
-import { STEP } from './config.js';
+// The screenshot scenes behind ?shot=start|play|combo|end|shop. Each one
+// plays the real rules forward from a fresh world for a fixed number of
+// steps, steered by a simple autopilot (serve the most impatient customer's
+// order), so the frame is what a short game really looks like and the same
+// seed always gives the same frame.
+import { STEP, UPGRADES } from './config.js';
 import { EVENT_LOSE, EVENT_WIN } from './world.js';
-import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+import { SCREEN_OVER, SCREEN_PLAY, SCREEN_SHOP, SCREEN_TITLE } from './render.js';
 
 const START_SECONDS = 6;
-const PLAY_SECONDS = 34;
+const PLAY_SECONDS = 40;
 const COMBO_SECONDS = 60;
 const END_LIMIT_SECONDS = 900;
+const SHOP_LIMIT_SECONDS = 200;
 
 /**
  * Serve the most impatient seated customer, one correct item per call, and
@@ -30,9 +31,23 @@ function autopilot(world) {
   world.serve(best.order[0]);
 }
 
+/** In the shop, the autopilot buys the first upgrade it can afford, then
+ *  moves on to the next shift — the same choices a player makes. */
+function autopilotShop(world) {
+  const s = world.state;
+  if (s.status !== 'shop') return;
+  for (const u of UPGRADES) {
+    if (!s.upgrades[u.id] && s.totalCoins >= u.price) {
+      world.buyUpgrade(u.id);
+      break;
+    }
+  }
+  world.nextDay();
+}
+
 export function stageShot(name, world) {
   world.reset();
-  if (name !== 'play' && name !== 'combo' && name !== 'end') {
+  if (name !== 'play' && name !== 'combo' && name !== 'end' && name !== 'shop') {
     world.startGame();
     // Title backdrop: run in harmless mode by stepping the world while its
     // status is playing but freezing the clock via a fresh reset + idle steps.
@@ -41,6 +56,16 @@ export function stageShot(name, world) {
     return { screen: SCREEN_TITLE, best: 0 };
   }
   world.startGame();
+  if (name === 'shop') {
+    // Play until the first shift ends and the shop opens, then stop there.
+    for (let i = 0; i < SHOP_LIMIT_SECONDS / STEP; i += 1) {
+      autopilot(world);
+      world.step(STEP, false);
+      if (world.state.status === 'shop') break;
+      if (world.state.status === 'won' || world.state.status === 'lost') break;
+    }
+    return { screen: SCREEN_SHOP, best: world.state.totalCoins };
+  }
   const limit = name === 'end' ? END_LIMIT_SECONDS : name === 'combo' ? COMBO_SECONDS : PLAY_SECONDS;
   let events = 0;
   let cooldown = 0;
@@ -50,13 +75,13 @@ export function stageShot(name, world) {
       autopilot(world);
       cooldown = 55;
     }
+    if (world.state.status === 'shop') autopilotShop(world);
     events = world.step(STEP, false);
-    if (name === 'combo' && world.state.combo >= 5) break;
+    // Combo shot: only stop on a good combo well into the Rush Hour crowd
+    // (rush runs 30–45 s), so the frame is busy and distinct from the
+    // 40 s play shot, not an early quiet moment.
+    if (name === 'combo' && world.state.combo >= 5 && i * STEP >= 50) break;
     if (events & (EVENT_WIN | EVENT_LOSE)) break;
-    if (world.state.status === 'dayclear') {
-      // Let the day-clear pause elapse so the next shift starts.
-      for (let j = 0; j < 3.2 / STEP; j += 1) world.step(STEP, false);
-    }
   }
   const over = world.state.status === 'won' || world.state.status === 'lost';
   return { screen: over ? SCREEN_OVER : SCREEN_PLAY, best: world.state.totalCoins };

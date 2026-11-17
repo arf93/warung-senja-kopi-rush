@@ -45,6 +45,8 @@ export function createAudio() {
   }
 
   function click() { tone(660, 0, 0.07, 'triangle', 0.08); }
+  function milestone() { [880, 1174.66, 1567.98].forEach((f, i) => tone(f, i * 0.09, 0.18, 'triangle', 0.13)); }
+  function vip() { tone(1046.5, 0, 0.1, 'triangle', 0.12); tone(1567.98, 0.08, 0.18, 'triangle', 0.11); }
   function serve() { tone(523.25, 0, 0.12, 'triangle', 0.14); tone(783.99, 0.08, 0.16, 'triangle', 0.12); }
   function coin() { tone(1046.5, 0, 0.1, 'square', 0.05); tone(1318.5, 0.07, 0.14, 'square', 0.05); }
   function wrong() { tone(160, 0, 0.18, 'sawtooth', 0.08); tone(120, 0.1, 0.2, 'sawtooth', 0.07); }
@@ -74,6 +76,8 @@ export function createAudio() {
   return {
     unlock,
     click,
+    milestone,
+    vip,
     serve,
     coin,
     wrong,

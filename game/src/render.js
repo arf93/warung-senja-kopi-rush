@@ -2,7 +2,7 @@
 // The 1280x720 playfield is scaled to fit the window and centred, the margin
 // filled with the backdrop colour. All art is drawn with Canvas 2D shapes:
 // a Yogyakarta sunset, the warung counter, and the customers themselves.
-import { FIELD, FONT, MENU, MENU_ORDER, PALETTE, SEATS } from './config.js';
+import { FIELD, FONT, MENU, MENU_ORDER, PALETTE, SEATS, SHIFT_SKIES } from './config.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -16,9 +16,9 @@ export const PAUSE_RECT = { x: 1180, y: 10, w: 44, h: 44 };
 export const MUTE_RECT = { x: 1128, y: 10, w: 44, h: 44 };
 
 export function trayRects() {
-  const w = 236;
-  const gap = 16;
-  const total = w * 4 + gap * 3;
+  const w = 208;
+  const gap = 10;
+  const total = w * 5 + gap * 4;
   const x0 = (FIELD.width - total) / 2;
   return MENU_ORDER.map((id, i) => ({ id, x: x0 + i * (w + gap), y: TRAY_Y, w, h: TRAY_H }));
 }
@@ -66,25 +66,58 @@ export function createRenderer(canvas) {
     context.closePath();
   }
 
-  function drawSunset(t) {
+  function drawSunset(t, day) {
+    const sky = SHIFT_SKIES[day] || SHIFT_SKIES[0];
     const g = context.createLinearGradient(0, 0, 0, 460);
-    g.addColorStop(0, PALETTE.skyTop);
-    g.addColorStop(0.55, PALETTE.skyMid);
-    g.addColorStop(1, PALETTE.skyLow);
+    g.addColorStop(0, sky.top);
+    g.addColorStop(0.55, sky.mid);
+    g.addColorStop(1, sky.low);
     context.fillStyle = g;
     context.fillRect(0, 0, FIELD.width, 470);
-    // Sun, low over the rooftops.
-    const glow = context.createRadialGradient(640, 330, 10, 640, 330, 150);
-    glow.addColorStop(0, 'rgba(255, 215, 110, 0.9)');
+    // Sun low over the rooftops — a pale moon, high up, on the night shift.
+    const glow = context.createRadialGradient(640, sky.sunY, 10, 640, sky.sunY, 150);
+    glow.addColorStop(0, sky.stars ? 'rgba(255, 233, 168, 0.55)' : 'rgba(255, 215, 110, 0.9)');
     glow.addColorStop(1, 'rgba(255, 215, 110, 0)');
     context.fillStyle = glow;
-    context.fillRect(440, 130, 400, 400);
-    context.fillStyle = PALETTE.sun;
+    context.fillRect(440, sky.sunY - 200, 400, 400);
+    context.fillStyle = sky.sun;
     context.beginPath();
-    context.arc(640, 330, 52, 0, Math.PI * 2);
+    context.arc(640, sky.sunY, sky.sunR, 0, Math.PI * 2);
     context.fill();
-    // Drifting clouds.
-    context.fillStyle = 'rgba(255, 190, 160, 0.35)';
+    if (sky.stars) {
+      // Moon craters.
+      context.fillStyle = 'rgba(200, 180, 140, 0.5)';
+      context.beginPath();
+      context.arc(628, sky.sunY - 8, 6, 0, Math.PI * 2);
+      context.arc(652, sky.sunY + 10, 4, 0, Math.PI * 2);
+      context.fill();
+      // Twinkling stars, placed by index so they never jump around.
+      for (let i = 0; i < 46; i += 1) {
+        const sx = (i * 173 + 41) % 1280;
+        const sy = (i * 97 + 23) % 210 + 12;
+        const tw = 0.35 + 0.65 * Math.abs(Math.sin(t * 1.5 + i * 1.3));
+        context.fillStyle = 'rgba(255, 244, 200, ' + tw.toFixed(2) + ')';
+        context.beginPath();
+        context.arc(sx, sy, i % 5 === 0 ? 2.6 : 1.6, 0, Math.PI * 2);
+        context.fill();
+      }
+    } else {
+      // Birds crossing the dusk sky, wings flapping.
+      context.strokeStyle = 'rgba(40, 20, 40, 0.7)';
+      context.lineWidth = 3;
+      for (let i = 0; i < 3; i += 1) {
+        const bx = ((t * 26 + i * 480) % 1420) - 70;
+        const by = 90 + i * 46;
+        const flap = Math.sin(t * 6 + i * 2) * 4;
+        context.beginPath();
+        context.moveTo(bx - 12, by);
+        context.quadraticCurveTo(bx - 5, by - 6 - flap, bx, by);
+        context.quadraticCurveTo(bx + 5, by - 6 - flap, bx + 12, by);
+        context.stroke();
+      }
+    }
+    // Drifting clouds, dimmer once night falls.
+    context.fillStyle = sky.stars ? 'rgba(200, 170, 200, 0.18)' : 'rgba(255, 190, 160, 0.35)';
     for (let i = 0; i < 4; i += 1) {
       const cx = ((i * 340 + t * 12) % 1500) - 120;
       const cy = 70 + i * 42;
@@ -143,7 +176,7 @@ export function createRenderer(canvas) {
     context.fillRect(0, 470, FIELD.width, 126);
   }
 
-  function drawItemIcon(id, x, y, s) {
+  function drawItemIcon(id, x, y, s, t) {
     const m = MENU[id];
     if (id === 'kopi') {
       context.fillStyle = m.cup;
@@ -184,7 +217,7 @@ export function createRenderer(canvas) {
       context.arc(x - s * 0.26, y - s * 0.12, s * 0.05, 0, Math.PI * 2);
       context.arc(x + s * 0.26, y - s * 0.12, s * 0.05, 0, Math.PI * 2);
       context.fill();
-    } else {
+    } else if (id === 'nasi') {
       // Nasi kucing: banana-leaf packet.
       context.fillStyle = m.color;
       context.beginPath();
@@ -204,6 +237,35 @@ export function createRenderer(canvas) {
       context.beginPath();
       context.ellipse(x, y - s * 0.05, s * 0.16, s * 0.1, 0, 0, Math.PI * 2);
       context.fill();
+    } else {
+      // Es teh: tall glass, amber tea, ice cubes, red straw.
+      context.fillStyle = 'rgba(126, 200, 227, 0.92)';
+      roundRect(x - s * 0.3, y - s * 0.42, s * 0.6, s * 0.84, 4);
+      context.fill();
+      context.fillStyle = '#c97e1f';
+      context.fillRect(x - s * 0.26, y - s * 0.1, s * 0.52, s * 0.48);
+      context.fillStyle = 'rgba(255, 255, 255, 0.85)';
+      context.fillRect(x - s * 0.16, y - s * 0.05, s * 0.2, s * 0.2);
+      context.fillRect(x + s * 0.02, y + s * 0.12, s * 0.18, s * 0.18);
+      context.strokeStyle = '#c94f4f';
+      context.lineWidth = 4;
+      context.beginPath();
+      context.moveTo(x + s * 0.1, y - s * 0.42);
+      context.lineTo(x + s * 0.28, y - s * 0.66);
+      context.stroke();
+    }
+    // Hot drinks steam: two wisps curling up, swaying with time.
+    if ((id === 'kopi' || id === 'teh') && t !== undefined) {
+      context.strokeStyle = 'rgba(255, 243, 224, 0.75)';
+      context.lineWidth = 2.5;
+      for (let i = 0; i < 2; i += 1) {
+        const sx = x - s * 0.14 + i * s * 0.28;
+        const sway = Math.sin(t * 2.4 + i * 1.8 + x * 0.05) * 4;
+        context.beginPath();
+        context.moveTo(sx, y - s * 0.42);
+        context.quadraticCurveTo(sx + sway, y - s * 0.62, sx - sway * 0.5, y - s * 0.8);
+        context.stroke();
+      }
     }
   }
 
@@ -229,17 +291,35 @@ export function createRenderer(canvas) {
     context.arc(x - 44, y + 30, 13, 0, Math.PI * 2);
     context.arc(x + 44, y + 30, 13, 0, Math.PI * 2);
     context.fill();
+    // Hijab cloth first, so the face sits inside it.
+    if (c.accessory === 'hijab') {
+      context.fillStyle = c.hijab;
+      context.beginPath();
+      context.arc(x, y - 48, 35, 0, Math.PI * 2);
+      context.fill();
+      context.fillRect(x - 35, y - 48, 70, 34);
+    }
     // Head.
     context.fillStyle = c.skin;
     context.beginPath();
     context.arc(x, y - 48, 30, 0, Math.PI * 2);
     context.fill();
-    // Hair.
-    context.fillStyle = c.hair;
-    context.beginPath();
-    context.arc(x, y - 58, 29, Math.PI, Math.PI * 2);
-    context.fill();
-    context.fillRect(x - 29, y - 62, 58, 10);
+    // Hair (covered by a hijab).
+    if (c.accessory !== 'hijab') {
+      context.fillStyle = c.hair;
+      context.beginPath();
+      context.arc(x, y - 58, 29, Math.PI, Math.PI * 2);
+      context.fill();
+      context.fillRect(x - 29, y - 62, 58, 10);
+    }
+    // Peci: a black cap on top of the hair.
+    if (c.accessory === 'peci') {
+      context.fillStyle = '#111111';
+      context.beginPath();
+      context.arc(x, y - 66, 26, Math.PI, 0);
+      context.fill();
+      context.fillRect(x - 26, y - 70, 52, 8);
+    }
     // Face by mood.
     context.fillStyle = '#221a12';
     const eyeY = y - 52;
@@ -282,6 +362,32 @@ export function createRenderer(canvas) {
       context.arc(x + 20, y - 38, 5, 0, Math.PI * 2);
       context.fill();
     }
+    // Glasses.
+    if (c.accessory === 'glasses') {
+      context.strokeStyle = '#221a12';
+      context.lineWidth = 2.5;
+      context.beginPath();
+      context.arc(x - 12, eyeY, 8, 0, Math.PI * 2);
+      context.arc(x + 12, eyeY, 8, 0, Math.PI * 2);
+      context.moveTo(x - 4, eyeY);
+      context.lineTo(x + 4, eyeY);
+      context.stroke();
+    }
+    // Moustache.
+    if (c.accessory === 'moustache') {
+      context.fillStyle = '#221a12';
+      context.beginPath();
+      context.ellipse(x, y - 33, 10, 3.5, 0, 0, Math.PI * 2);
+      context.fill();
+    }
+    // VIP: a gold outline so the high payer stands out.
+    if (c.vip) {
+      context.strokeStyle = '#ffd76e';
+      context.lineWidth = 5;
+      context.beginPath();
+      context.ellipse(x, y + 8, 66, 82, 0, 0, Math.PI * 2);
+      context.stroke();
+    }
     // Selected ring and name.
     if (selected) {
       context.strokeStyle = PALETTE.selected;
@@ -299,7 +405,7 @@ export function createRenderer(canvas) {
       context.closePath();
       context.fill();
     }
-    text(c.name, x, y + 128, 17, PALETTE.text, 'center', '600');
+    text((c.vip ? '★ ' : '') + c.name, x, y + 128, 17, c.vip ? '#ffd76e' : PALETTE.text, 'center', '600');
     // Order bubble.
     if (c.order.length > 0) {
       const bw = 46 + c.order.length * 52;
@@ -315,7 +421,7 @@ export function createRenderer(canvas) {
       context.closePath();
       context.fill();
       c.order.forEach((id, i) => {
-        drawItemIcon(id, bx + 34 + i * 52, by + 32, 40);
+        drawItemIcon(id, bx + 34 + i * 52, by + 32, 40, t);
       });
     }
     // Patience bar.
@@ -330,7 +436,39 @@ export function createRenderer(canvas) {
     context.fill();
   }
 
-  function drawCounter() {
+  function drawCounter(day) {
+    const sky = SHIFT_SKIES[day] || SHIFT_SKIES[0];
+    // Hanging lamps from the roofline, between the seats: dim at dusk,
+    // glowing warm at night.
+    for (const lx of [300, 980]) {
+      const flicker = 0.85 + 0.15 * Math.sin(performance.now() / 300 + lx);
+      const glowA = sky.lampGlow * flicker;
+      if (glowA > 0.05) {
+        const lg = context.createRadialGradient(lx, 462, 4, lx, 462, 70);
+        lg.addColorStop(0, 'rgba(255, 205, 110, ' + (0.75 * glowA).toFixed(2) + ')');
+        lg.addColorStop(1, 'rgba(255, 205, 110, 0)');
+        context.fillStyle = lg;
+        context.fillRect(lx - 70, 392, 140, 140);
+      }
+      context.strokeStyle = '#2e1a33';
+      context.lineWidth = 3;
+      context.beginPath();
+      context.moveTo(lx, 420);
+      context.lineTo(lx, 452);
+      context.stroke();
+      context.fillStyle = '#3a2b1a';
+      context.beginPath();
+      context.moveTo(lx - 14, 452);
+      context.lineTo(lx + 14, 452);
+      context.lineTo(lx + 8, 440);
+      context.lineTo(lx - 8, 440);
+      context.closePath();
+      context.fill();
+      context.fillStyle = 'rgba(255, 220, 130, ' + (0.35 + 0.65 * glowA).toFixed(2) + ')';
+      context.beginPath();
+      context.arc(lx, 460, 8, 0, Math.PI * 2);
+      context.fill();
+    }
     context.fillStyle = PALETTE.counterFront;
     context.fillRect(0, 500, FIELD.width, 96);
     context.fillStyle = PALETTE.counterTop;
@@ -395,7 +533,7 @@ export function createRenderer(canvas) {
     text('II', PAUSE_RECT.x + 22, PAUSE_RECT.y + 31, 20, PALETTE.text, 'center', '800');
   }
 
-  function drawTray(state) {
+  function drawTray(state, t) {
     context.fillStyle = PALETTE.tray;
     context.fillRect(0, TRAY_Y - 8, FIELD.width, TRAY_H + 16);
     context.fillStyle = PALETTE.trayEdge;
@@ -410,21 +548,21 @@ export function createRenderer(canvas) {
       context.lineWidth = 2;
       roundRect(r.x, r.y, r.w, r.h, 14);
       context.stroke();
-      drawItemIcon(r.id, r.x + 44, r.y + 52, 52);
-      text(MENU[r.id].name, r.x + 82, r.y + 40, 21, PALETTE.text, 'left', '700');
-      text('🪙 ' + MENU[r.id].price + '   •   tombol ' + MENU[r.id].key, r.x + 82, r.y + 70, 17, PALETTE.muted, 'left');
+      drawItemIcon(r.id, r.x + 38, r.y + 52, 48, t);
+      text(MENU[r.id].name, r.x + 74, r.y + 38, 19, PALETTE.text, 'left', '700');
+      text('🪙 ' + MENU[r.id].price + '   •   tombol ' + MENU[r.id].key, r.x + 74, r.y + 68, 16, PALETTE.muted, 'left');
       void selected;
     });
     // Hint line sits in the clear strip below the tray panel (panel ends at
     // TRAY_Y + TRAY_H + 8 = 692; glyphs span ~699-714, inside the 720 field).
-    text('Klik pelanggan, lalu klik menu — atau pilih dengan ← → dan sajikan dengan 1-4', FIELD.width / 2, TRAY_Y + TRAY_H + 26, 15, PALETTE.muted, 'center');
+    text('Klik pelanggan, lalu klik menu — atau pilih dengan ← → dan sajikan dengan 1-5', FIELD.width / 2, TRAY_Y + TRAY_H + 26, 15, PALETTE.muted, 'center');
   }
 
   function drawFloaters(state) {
     for (const f of state.floaters) {
       if (!f.active) continue;
       context.globalAlpha = Math.min(1, f.life);
-      text(f.text, f.x, f.y, 24, f.color, 'center', '800');
+      text(f.text, f.x, f.y, f.size || 24, f.color, 'center', '800');
       context.globalAlpha = 1;
     }
     for (const p of state.particles) {
@@ -465,20 +603,20 @@ export function createRenderer(canvas) {
     context.fillStyle = PALETTE.backdrop;
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.setTransform(view.scale, 0, 0, view.scale, view.x, view.y);
-    drawSunset(t);
-    drawCounter();
+    drawSunset(t, state.day);
+    drawCounter(state.day);
     for (const c of state.customers) {
       if (c.active) drawCustomer(c, c.seat === state.selected && screen === SCREEN_PLAY, t);
     }
     drawFloaters(state);
     if (screen === SCREEN_TITLE) {
       drawHud({ coins: 0, target: DAYS0Target(), day: 0, timeLeft: 75, walkouts: 0, combo: 0 }, muted);
-      drawPanel('WARUNG SENJA', ['Kopi Rush — layani pelanggan sebelum senja habis.', 'Klik pelanggan, sajikan pesanan yang benar, jaga kombo.', 'Kopi 30  •  Teh 20  •  Gorengan 25  •  Nasi Kucing 35', '3 shift. Capai target koin tiap shift. 5 pelanggan pergi = tutup.'], 'Tekan Spasi atau klik untuk mulai', PALETTE.panelEdge);
+      drawPanel('WARUNG SENJA', ['Kopi Rush — layani pelanggan sebelum senja habis.', 'Klik pelanggan, sajikan pesanan yang benar, jaga kombo.', 'Kopi 30  •  Teh 20  •  Gorengan 25  •  Nasi Kucing 35  •  Es Teh 25', 'Pelanggan VIP Pak Lurah bayar 2x — layani dia cepat!', '3 shift: senja, jingga pekat, lalu malam. 5 pelanggan pergi = tutup.'], 'Tekan Spasi atau klik untuk mulai', PALETTE.panelEdge);
       text('Skor terbaik: ' + best + ' koin', FIELD.width / 2, 640, 20, PALETTE.muted, 'center');
       return;
     }
     drawHud(state, muted);
-    drawTray(state);
+    drawTray(state, t);
     if (screen === SCREEN_PAUSED) {
       drawPanel('Jeda', ['Warungnya menunggu. Pelanggan sabar dulu.'], 'Tekan P untuk lanjut  •  R untuk mulai ulang');
     } else if (screen === SCREEN_DAYCLEAR) {
@@ -492,7 +630,7 @@ export function createRenderer(canvas) {
     }
   }
 
-  function DAYS0Target() { return 500; }
+  function DAYS0Target() { return 550; }
 
   resize();
   window.addEventListener('resize', resize);

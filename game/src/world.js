@@ -4,7 +4,7 @@
 // step() advances one fixed step and returns what happened as bit flags, so
 // the caller can react (and play sounds) without the world knowing about
 // screens or sound. Nothing here allocates after createWorld returns.
-import { CUSTOMER_NAMES, DAYS, HAIRS, MAX_WALKOUTS, MENU, MENU_ORDER, SEATS, SHIRTS, SKINS } from './config.js';
+import { CUSTOMER_NAMES, DAYS, HAIRS, HIJAB_COLORS, MAX_WALKOUTS, MENU, MENU_ORDER, SEATS, SHIRTS, SKINS, VIP_CHANCE, VIP_NAME, VIP_PATIENCE, VIP_PAY } from './config.js';
 
 export const EVENT_SERVE = 1;
 export const EVENT_COIN = 2;
@@ -15,6 +15,8 @@ export const EVENT_DAYCLEAR = 32;
 export const EVENT_WIN = 64;
 export const EVENT_LOSE = 128;
 export const EVENT_DAYSTART = 256;
+export const EVENT_MILESTONE = 512;
+export const EVENT_VIP = 1024;
 
 function pick(random, list) {
   return list[Math.floor(random() * list.length)];
@@ -32,10 +34,11 @@ export function createWorld(random) {
     customers.push({
       active: false, seat: i, name: '', shirt: '#888', skin: '#f2c79b', hair: '#221a12',
       order: [], patience: 1, patienceMax: 30, mood: 'happy', bob: 0, leaveTimer: 0, leaving: false,
+      vip: false, accessory: 'none', hijab: '#c96ba0',
     });
   }
   const floaters = [];
-  for (let i = 0; i < 24; i += 1) floaters.push({ active: false, x: 0, y: 0, text: '', color: '#fff', life: 0 });
+  for (let i = 0; i < 24; i += 1) floaters.push({ active: false, x: 0, y: 0, text: '', color: '#fff', life: 0, size: 24 });
   const particles = [];
   for (let i = 0; i < 80; i += 1) particles.push({ active: false, x: 0, y: 0, vx: 0, vy: 0, life: 0, color: '#fff', size: 3 });
 
@@ -48,10 +51,10 @@ export function createWorld(random) {
     selected: -1, spawnTimer: 1.2, elapsed: 0, dayClearTimer: 0,
   };
 
-  function addFloater(x, y, text, color) {
+  function addFloater(x, y, text, color, size) {
     for (const f of floaters) {
       if (f.active) continue;
-      f.active = true; f.x = x; f.y = y; f.text = text; f.color = color; f.life = 1.1;
+      f.active = true; f.x = x; f.y = y; f.text = text; f.color = color; f.life = 1.1; f.size = size || 24;
       return;
     }
   }
@@ -89,13 +92,25 @@ export function createWorld(random) {
     c.leaving = false;
     c.leaveTimer = 0;
     const used = new Set(customers.filter((o) => o.active).map((o) => o.name));
-    const freeNames = CUSTOMER_NAMES.filter((n) => !used.has(n));
-    c.name = freeNames.length > 0 ? pick(random, freeNames) : pick(random, CUSTOMER_NAMES);
+    // One VIP at a time: Pak Lurah, gold and impatient, pays double.
+    const vipFree = !customers.some((o) => o.active && o.vip) && !used.has(VIP_NAME);
+    c.vip = vipFree && random() < VIP_CHANCE;
+    if (c.vip) {
+      c.name = VIP_NAME;
+      c.accessory = 'peci';
+    } else {
+      const freeNames = CUSTOMER_NAMES.filter((n) => !used.has(n));
+      c.name = freeNames.length > 0 ? pick(random, freeNames) : pick(random, CUSTOMER_NAMES);
+      // A little variety on every face: glasses, moustache, peci or hijab.
+      const roll = random();
+      c.accessory = roll < 0.15 ? 'glasses' : roll < 0.25 ? 'moustache' : roll < 0.33 ? 'peci' : roll < 0.40 ? 'hijab' : 'none';
+    }
+    c.hijab = pick(random, HIJAB_COLORS);
     c.shirt = pick(random, SHIRTS);
     c.skin = pick(random, SKINS);
     c.hair = pick(random, HAIRS);
     c.order = makeOrder(dayCfg);
-    c.patienceMax = dayCfg.patience * (0.9 + random() * 0.25);
+    c.patienceMax = dayCfg.patience * (0.9 + random() * 0.25) * (c.vip ? VIP_PATIENCE : 1);
     c.patience = 1;
     c.mood = 'happy';
     c.bob = random() * Math.PI * 2;
@@ -175,12 +190,22 @@ export function createWorld(random) {
     state.combo += 1;
     if (state.combo > state.bestCombo) state.bestCombo = state.combo;
     const mult = comboMultiplier(state.combo);
-    const earned = MENU[itemId].price * mult;
+    const earned = MENU[itemId].price * mult * (c.vip ? VIP_PAY : 1);
     state.coins += earned;
     state.totalCoins += earned;
     state.served += 1;
-    addFloater(seat.x, seat.y - 130, '+' + earned + (mult > 1 ? ' x' + mult : ''), '#f2c94c');
-    burst(seat.x, seat.y - 60, '#ffd76e', 8);
+    addFloater(seat.x, seat.y - 130, '+' + earned + (mult > 1 ? ' x' + mult : '') + (c.vip ? ' VIP!' : ''), '#f2c94c');
+    burst(seat.x, seat.y - 60, c.vip ? '#ffd76e' : '#f2c94c', c.vip ? 18 : 12);
+    let extra = 0;
+    if (c.vip) extra |= EVENT_VIP;
+    // Combo milestones get a big shout: x2 starts at 4 serves, x3 at 9.
+    if (state.combo === 4) {
+      addFloater(seat.x, seat.y - 200, 'KOMBO x2!', '#ffd76e', 32);
+      extra |= EVENT_MILESTONE;
+    } else if (state.combo === 9) {
+      addFloater(seat.x, seat.y - 200, 'KOMBO x3!', '#ffd76e', 34);
+      extra |= EVENT_MILESTONE;
+    }
     if (c.order.length === 0) {
       c.leaving = true;
       c.leaveTimer = 0.45;
@@ -190,7 +215,7 @@ export function createWorld(random) {
         state.selected = rest.length > 0 ? rest[0].seat : -1;
       }
     }
-    return EVENT_SERVE | EVENT_COIN;
+    return EVENT_SERVE | EVENT_COIN | extra;
   }
 
   function step(dt, harmless) {

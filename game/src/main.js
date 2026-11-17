@@ -8,7 +8,7 @@
 // and sets window.__shotReady for a screenshot.
 import { BEST_KEY, STEP } from './config.js';
 import { createRandom } from './random.js';
-import { createWorld, EVENT_ARRIVE, EVENT_COIN, EVENT_DAYCLEAR, EVENT_DAYSTART, EVENT_LOSE, EVENT_SERVE, EVENT_WALKOUT, EVENT_WIN, EVENT_WRONG } from './world.js';
+import { createWorld, EVENT_ARRIVE, EVENT_COIN, EVENT_DAYCLEAR, EVENT_DAYSTART, EVENT_LOSE, EVENT_MILESTONE, EVENT_SERVE, EVENT_VIP, EVENT_WALKOUT, EVENT_WIN, EVENT_WRONG } from './world.js';
 import { ACTION_CONFIRM, ACTION_MUTE, ACTION_PAUSE, ACTION_RESTART, createInput } from './input.js';
 import { createAudio } from './audio.js';
 import { MUTE_RECT, PAUSE_RECT, SCREEN_DAYCLEAR, SCREEN_OVER, SCREEN_PAUSED, SCREEN_PLAY, SCREEN_TITLE, createRenderer, seatAt, trayRects } from './render.js';
@@ -96,6 +96,8 @@ function runGame() {
   function playEvents(events) {
     if (events & EVENT_SERVE) audio.serve();
     if (events & EVENT_COIN) audio.coin();
+    if (events & EVENT_MILESTONE) audio.milestone();
+    if (events & EVENT_VIP) audio.vip();
     if (events & EVENT_WRONG) audio.wrong();
     if (events & EVENT_WALKOUT) audio.walkout();
     if (events & EVENT_ARRIVE) audio.arrive();

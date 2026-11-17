@@ -11,7 +11,7 @@ const CONFIRM = new Set(['Space', 'Enter']);
 const PAUSE = new Set(['KeyP', 'Escape']);
 const RESTART = new Set(['KeyR']);
 const MUTE = new Set(['KeyM']);
-const SERVE_KEYS = { Digit1: 'kopi', Digit2: 'teh', Digit3: 'goreng', Digit4: 'nasi', Numpad1: 'kopi', Numpad2: 'teh', Numpad3: 'goreng', Numpad4: 'nasi' };
+const SERVE_KEYS = { Digit1: 'kopi', Digit2: 'teh', Digit3: 'goreng', Digit4: 'nasi', Digit5: 'esteh', Numpad1: 'kopi', Numpad2: 'teh', Numpad3: 'goreng', Numpad4: 'nasi', Numpad5: 'esteh' };
 
 export function createInput(canvas, toLogical) {
   let actions = 0;
